@@ -53,7 +53,7 @@ class MarketDataSourse(object):
         self.start, self.end = start, end
         self.df = None
 
-    def fetch_historical_prices(self): # TBD: how to change providers...
+    def fetch_historical_prices(self): # TBD: how to change providers?
         """
         Method specific to quandl and needs changes to use data from other providers, consider taking 
         providers' name as parameter input into the function and implement diffrent get methods
@@ -200,19 +200,43 @@ class MeanRevertingStrategy(Strategy):
     Requirements: if the current market price is less than the average price, the stock is considered attractive 
     for purchase, with the expectation that the price will rise. When the current market price is above the average price, 
     the market price is expected to fall. In other words, deviations from the average price are expected to revert to the
-    average.
+    average or mean, hence the name.
     """
-    def __init__(self, symbol, trade_qty, send_order_event_handler=None,
-        lookback_intervals=20, buy_threshold=-1.5, sell_threshold=1.5):
+    def __init__(self, symbol, trade_qty, 
+                 send_order_event_handler=None, 
+                 lookback_intervals=20, buy_threshold=-1.5, sell_threshold=1.5): # 3 params generate signals for the strategy
+        
         super(MeanRevertingStrategy, self).__init__(send_order_event_handler)
+        
         self.symbol = symbol
         self.trade_qty = trade_qty
         self.lookback_intervals = lookback_intervals
         self.buy_threshold = buy_threshold
         seld.sell_threshold = sell_threshold
+        
         self.prices = pd.DataFrame()
         seld.is_long = self.is_short = False
-# to be continued ...
+        
+        def on_position_event(self, positions): # Again, how `positions` are build?
+            position = positions.get(self.symbol)
+            
+            self.is_long = position and position.net > 0
+            self.is_short = position and position.net < 0
+            
+        
+        def on_tick_event(self, market_data):
+            self.store_prices(market_data)
+            
+            if len(self.prices) < self.lookback_intervals:
+                return
+            
+            self.generate_signals_and_send_order(market_data)
+            
+        def store_prices(self, market_data):
+            pass # TBC....
+            
+            
+            
 
 # Engine stores the symbol and number of units to trade
 class BacktestEngine:

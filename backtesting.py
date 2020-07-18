@@ -62,7 +62,7 @@ class MarketDataSourse(object):
         
         import quandl
         
-        QUANDL_API_KEY = 'xxx' # Use API key here...
+        QUANDL_API_KEY =config.KEY  #'xxx' # Use API key here...
         quandl.ApiConfig.api_key = QUANDL_API_KEY
         df = quandl.get(self.symbol, start_data=self.start, end_date=self.end)
         
@@ -202,7 +202,7 @@ class MeanRevertingStrategy(Strategy):
     the market price is expected to fall. In other words, deviations from the average price are expected to revert to the
     average or mean, hence the name.
     """
-    def __init__(self, symbol, trade_qty, 
+    def __init__(self, symbol,    # trade_qty, 
                  send_order_event_handler=None, 
                  lookback_intervals=20, buy_threshold=-1.5, sell_threshold=1.5): # 3 params generate signals for the strategy
         
@@ -272,7 +272,8 @@ class BacktestEngine:
     """
     Engine stores the symbol and number of units to trade
     """
-    def __init__(self, symbol, trade_qty, start='', end=''):
+    def __init__(self, symbol, #trade_qty, 
+                 start='', end=''):
         self.symbol = symbol
         self.trade_qty = trade_qty
         self.market_data_source = MarketDataSourse(symbol, tick_event_handler=self.on_tick_event, start=start, end=end)
@@ -287,7 +288,7 @@ class BacktestEngine:
         self.unfilled_orders = []
         self.positions = dict()
         self.df_rpnl = pd.DataFrame()
-        self.strategy = MeanRevertingStrategy(self.symbol, self.trade_qty,
+        self.strategy = MeanRevertingStrategy(self.symbol, #self.trade_qty,
                                               send_order_event_handler=self.on_order_received, **kwargs)
         self.market_data_source,run()
         print("Backtesting completed.")

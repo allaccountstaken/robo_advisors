@@ -233,19 +233,123 @@ class MeanRevertingStrategy(Strategy):
             self.generate_signals_and_send_order(market_data)
             
         def store_prices(self, market_data):
-            pass # TBC....
+            timestamp = market_data.get_timestamp(self.symbol)
+            close_price = market_data.get_close_price(self.symbol)
+            self.prices.loc[timestamp, 'close'] = close_price
+        
+        def generate_signals_and_send_order(self, market_data):
+            """
+            On each tick event, the z-score for the current period is calculates using `calculate_z_score()` method.
+            If z-score exceeds the buying threshold value, a buy signal is generated, i.e. either close a short 
+            position or enter into a long position by sending a buy market order. Conversely, when the z-score exceeds 
+            the selling thresholdvalue, a sell signal is generated, i.e. either close a long position or enter into 
+            a short trade by sending a sell order. For now, orders are executed at the opening of the next day
+            """
+            signal_value = self.calculate_z_score()
+            timestamp = market_data.get_timestamp(self.symbol)
+            
+            if self.buy_threshold > signal_value and not self.is_long:
+                print(timestamp.date(), 'BUY signal')
+                self.send_market_order(self.symbol, self.trade_qty, True, timestamp)
+            elif self.sell_threshold < signal_value and not self.is_short:
+                print(timestamp.date(), 'SELL signal')
+                self.send_market_order(self.symbol, self.trade_qty, False, timestamp)
+                
+        
+        def calculate_z_score(self):
+            self.prices = self.prices[-self.lookback_intervals:]
+            returns = self.prices['close'].pct_change().dropna()
+            z_score = ((returns - returns.mean() ) / returns.std())[-1]
+            return z_score
+            
+     
             
             
             
 
-# Engine stores the symbol and number of units to trade
+
 class BacktestEngine:
+    """
+    Engine stores the symbol and number of units to trade
+    """
     def __init__(self, symbol, trade_qty, start='', end=''):
         self.symbol = symbol
         self.trade_qty = trade_qty
-        self.market_data_source = MarketDataSourse(symbol,
-            tick_event_handler=self.on_tick_event, start=start, end=end)
-        self.strategy = None
+        self.market_data_source = MarketDataSourse(symbol, tick_event_handler=self.on_tick_event, start=start, end=end)
+        self.strategy = None # Stores instance of mean-reverting strategy class
+        self.unfilled_orders = [] # Stores incoming market orders for execution the next trading day
+        self.positions = dict() # Strores Position objects indexed by symbol
+        self.df_rpnl = None # Stores realized profits and losses during backtesting period
+        
+    def start(self, **kwargs):
+        print("Backtest started...") # TBD: add system time or timeit
+        
         self.unfilled_orders = []
         self.positions = dict()
-        self.df_rpnl = None
+        self.df_rpnl = pd.DataFrame()
+        self.strategy = MeanRevertingStrategy(self.symbol, self.trade_qty,
+                                              send_order_event_handler=self.on_order_received, **kwargs)
+        self.market_data_source,run()
+        print("Backtesting completed.")
+        
+    def on_order_received(self, order):
+        """
+        Adds an order to the order book
+        """
+        print(order.timestamp.date(), 'ODER', 'BUY' if order.is_buy else 'SELL', order.symbol, order.qty)
+        self.unfilled_orders.append(order)
+        
+    def on_tick_event(self, market_data):
+        self.match_order_book(market_data)
+        self.strategy.on_tick_event(market_data)
+        self.print_position_status(market_data)
+        
+        
+    def match_order_book(self, market_data):
+        if len(self.unfilled_orders) > 0:
+            self.unfilled_orders = [order for order in self.unfilled_orders 
+                if self.match_unfilleds_orders(order, market_data)]
+            
+    def match_unfilled_orders(self, order, market_data):
+        symbol = order.symbol
+        timestamp = market_data.get_timestamp(symbol)
+        """ Order is matched and filled"""
+        if order.is_market_order and timestamp > order.timestamp:
+            
+        
+            order.is_filled = True
+            order.filled_timestamp = timestamp
+            order.filled_price = open_price
+
+            self.on_order_filled(symbol, order.qty, order.is_buy, open_price, timestamp)
+
+            return False
+        
+        return True
+    
+    
+    def on_order_filled(self, symbol, qty, is_buy, filled_price, timestamp):
+        position = self.get_position(symbol)
+        position.on_position_event(is_buy, qty, filled_price)
+        self.df_rpnl.loc[timestamp, "rpnl"] = position.rpnl
+        
+        self.strategy.on_position_event(self.positions)
+        
+        print(timestamp.date(), 'FILLED', 'BUY' if is_buy else 'SELL', qty, symbol, 'at', filled_price)
+    
+    
+    def get_position(self, symbol):
+        if symbol not in self.positions:
+            self.positions[symbol] = Position(symbol)
+            
+        return self.positions[symbol]
+    
+    
+    def print_position_status(self, market_data):
+        for symbol, position in self.positions.items():
+            close_price = market_data.get_close_price(symbol)
+            timestamp = market_data.get_timestamp(symbol)
+            upnl = position.calculate_unrealized_pnl(close_price)
+            
+            print(timestamp.date(), 'POSITION', 'value:%.3f' % position.position.value,
+                  'upnl:%.3f' % upnl, 'rpnl:%.3f' % position.rpnl)

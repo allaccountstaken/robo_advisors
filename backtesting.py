@@ -62,7 +62,7 @@ class MarketDataSourse(object):
         
         import quandl
         
-        QUANDL_API_KEY =config.KEY  #'xxx' # Use API key here...
+        QUANDL_API_KEY =config.KEY  # Use your personal API key here...
         quandl.ApiConfig.api_key = QUANDL_API_KEY
         df = quandl.get(self.symbol, start_data=self.start, end_date=self.end)
         
@@ -202,7 +202,7 @@ class MeanRevertingStrategy(Strategy):
     the market price is expected to fall. In other words, deviations from the average price are expected to revert to the
     average or mean, hence the name.
     """
-    def __init__(self, symbol,    # trade_qty, 
+    def __init__(self, symbol, trade_qty, 
                  send_order_event_handler=None, 
                  lookback_intervals=20, buy_threshold=-1.5, sell_threshold=1.5): # 3 params generate signals for the strategy
         
@@ -272,11 +272,15 @@ class BacktestEngine:
     """
     Engine stores the symbol and number of units to trade
     """
-    def __init__(self, symbol, #trade_qty, 
-                 start='', end=''):
+    def __init__(self, symbol, trade_qty, start='', end=''):
         self.symbol = symbol
         self.trade_qty = trade_qty
-        self.market_data_source = MarketDataSourse(symbol, tick_event_handler=self.on_tick_event, start=start, end=end)
+        self.market_data_source = MarketDataSourse(
+            symbol, 
+            tick_event_handler=self.on_tick_event, 
+            start=start, 
+            end=end
+        )        
         self.strategy = None # Stores instance of mean-reverting strategy class
         self.unfilled_orders = [] # Stores incoming market orders for execution the next trading day
         self.positions = dict() # Strores Position objects indexed by symbol
@@ -288,19 +292,29 @@ class BacktestEngine:
         self.unfilled_orders = []
         self.positions = dict()
         self.df_rpnl = pd.DataFrame()
-        self.strategy = MeanRevertingStrategy(self.symbol, #self.trade_qty,
-                                              send_order_event_handler=self.on_order_received, **kwargs)
-        self.market_data_source,run()
+        self.strategy = MeanRevertingStrategy(
+            self.symbol, 
+            self.trade_qty, 
+            send_order_event_handler=self.on_order_received, 
+            **kwargs
+        )
+        self.market_data_source.run()
         print("Backtesting completed.")
         
     def on_order_received(self, order):
         """
         Adds an order to the order book
         """
-        print(order.timestamp.date(), 'ODER', 'BUY' if order.is_buy else 'SELL', order.symbol, order.qty)
+        print(order.timestamp.date(), 
+              'ODER', 
+              'BUY' if order.is_buy else 'SELL', 
+              order.symbol, 
+              order.qty
+             )
         self.unfilled_orders.append(order)
-        
+       
     def on_tick_event(self, market_data):
+        
         self.match_order_book(market_data)
         self.strategy.on_tick_event(market_data)
         self.print_position_status(market_data)
@@ -308,22 +322,27 @@ class BacktestEngine:
         
     def match_order_book(self, market_data):
         if len(self.unfilled_orders) > 0:
-            self.unfilled_orders = [order for order in self.unfilled_orders 
-                if self.match_unfilleds_orders(order, market_data)]
+            self.unfilled_orders = [
+                order for order in self.unfilled_orders 
+                if self.match_unfilled_orders(order, market_data)
+            ]
             
     def match_unfilled_orders(self, order, market_data):
         symbol = order.symbol
         timestamp = market_data.get_timestamp(symbol)
-        """ Order is matched and filled"""
-        if order.is_market_order and timestamp > order.timestamp:
-            
         
+        if order.is_market_order and timestamp > order.timestamp: # Order is matched and filled       
             order.is_filled = True
             order.filled_timestamp = timestamp
             order.filled_price = open_price
 
-            self.on_order_filled(symbol, order.qty, order.is_buy, open_price, timestamp)
-
+            self.on_order_filled(
+                symbol, 
+                order.qty, 
+                order.is_buy, 
+                open_price, 
+                timestamp
+            )
             return False
         
         return True
@@ -336,7 +355,14 @@ class BacktestEngine:
         
         self.strategy.on_position_event(self.positions)
         
-        print(timestamp.date(), 'FILLED', 'BUY' if is_buy else 'SELL', qty, symbol, 'at', filled_price)
+        print(timestamp.date(), 
+              'FILLED', 
+              'BUY' if is_buy else 'SELL', 
+              qty, 
+              symbol, 
+              'at', 
+              filled_price
+             )
     
     
     def get_position(self, symbol):
@@ -352,5 +378,9 @@ class BacktestEngine:
             timestamp = market_data.get_timestamp(symbol)
             upnl = position.calculate_unrealized_pnl(close_price)
             
-            print(timestamp.date(), 'POSITION', 'value:%.3f' % position.position.value,
-                  'upnl:%.3f' % upnl, 'rpnl:%.3f' % position.rpnl)
+            print(timestamp.date(), 
+                  'POSITION', 
+                  'value:%.3f' % position.position.value,
+                  'upnl:%.3f' % upnl, 
+                  'rpnl:%.3f' % position.rpnl
+                 )

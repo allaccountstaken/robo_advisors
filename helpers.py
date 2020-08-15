@@ -1,4 +1,7 @@
 
+
+
+
 def extract_coupon(description):
     coupon = ''
     for s in range(len(description)):
